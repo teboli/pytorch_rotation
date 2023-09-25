@@ -20,26 +20,30 @@ python benchmark.py
 ## What's up with this approach?
 
 A 2D rotation matrix of angle $\theta$ is defined as:
-$$ R(\theta) = \left[ \begin{array}{cc}
-    \cos(\theta) & -\sin(\theta) \\
-    \sin(\theta) &\cos(\theta)
-    \end{array} \right].$$
+$$ R(\theta) = 
+    \begin{bmatrix}
+        \cos(\theta) & -\sin(\theta) \\
+        \sin(\theta) &\cos(\theta)
+    \end{bmatrix}.$$
 Applying this transform matrix is done with 2D warp routines relying
 on bilinear or bicubic interpolation, for instance in OpenCV or Pytorch. 
 The authors of the paper above remarked that a threefold decomposition of 
 $R(\theta)$ exists:
-$$R(\theta) = \left[ \begin{array}{cc}
+$$R(\theta) =  
+\begin{bmatrix}
     1 & -\tan(\theta/2) \\
-    0 & 1 \end{array} \right]
-    \times
-    \left[ \begin{array}{cc}
+    0 & 1
+\end{bmatrix}
+\times
+\begin{bmatrix}
     1 & 0 \\
-    \sin(\theta) & 1 \end{array} \right]
-    \times
-    \left[ \begin{array}{cc}
+    \sin(\theta) & 1
+\end{bmatrix}
+\times
+\begin{bmatrix}
     1 & -\tan(\theta/2) \\
-    0 & 1 \end{array} \right].
-    $$
+    0 & 1
+\end{bmatrix}.$$
 This converts the 2D warp into three consecutive 1D shears, with no rescaling.
 This prevents losing to much details during the rotation process, and it
 can be efficiently implemented with row or column-wise translations.
