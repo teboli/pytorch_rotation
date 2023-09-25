@@ -16,20 +16,31 @@ and compare to pytorch interpolation functions with
 ```bash
 python benchmark.py
 ```
+In your python code, call the rotation function as follows:
+```python
+import torch
+import math
+
+from torch_rotation import rotate_three_pass  # same function for 4D and 5D tensor!
+
+I = torch.rand(10, 3, 128, 128)  # mock image (could be a mock volume too.)
+angle = 30 * math.pi / 180  # the angle should be in radian.
+
+I_rot = rotate_three_pass(I, angle)  # By default do FFT-based interpolation.
+```
 
 ## What's up with this approach?
 
 A 2D rotation matrix of angle $\theta$ is defined as:
-$$ R(\theta) = 
-    \begin{bmatrix}
-        \cos(\theta) & -\sin(\theta) \\
-        \sin(\theta) &\cos(\theta)
-    \end{bmatrix}.$$
+```math
+R(\theta) = \begin{bmatrix} \cos(\theta) & -\sin(\theta) \\ \sin(\theta) & cos(\theta) \end{bmatrix}.
+```
 Applying this transform matrix is done with 2D warp routines relying
 on bilinear or bicubic interpolation, for instance in OpenCV or Pytorch. 
 The authors of the paper above remarked that a threefold decomposition of 
 $R(\theta)$ exists:
-$$R(\theta) =  
+```math
+R(\theta) =  
 \begin{bmatrix}
     1 & -\tan(\theta/2) \\
     0 & 1
@@ -43,17 +54,18 @@ $$R(\theta) =
 \begin{bmatrix}
     1 & -\tan(\theta/2) \\
     0 & 1
-\end{bmatrix}.$$
-This converts the 2D warp into three consecutive 1D shears, with no rescaling.
-This prevents losing to much details during the rotation process, and it
+\end{bmatrix}.
+```
+This converts the 2D warp into three consecutive 1D shears, with no intermediate rescaling.
+This prevents losing too much details during the rotation process, and it
 can be efficiently implemented with row or column-wise translations.
 
-This method extends to the 3D case by applying the 2D rotation matrix around
+This method extends naturally to the 3D case by applying the 2D rotation matrix around
 each axis of the space.
 
 
 
-## Installation and get started
+## Installation
 
 It can be installed from pypi with
 ```bash
