@@ -3,7 +3,7 @@
 This repo contains a Pytorch implementation of the high-quality 
 convolution-based rotation
 introduced in IEEE TIP'95: "Convolution-Based Interpolation for Fast, 
-High-Quality Rotation of Images" by Michael Unser, Philipe Thevenaz and 
+High-Quality Rotation of Images" by Michael Unser, Philippe Thevenaz and 
 Leonid Yaroslavsky [[paper]](https://perso.telecom-paristech.fr/angelini/SI241/papers_for_project/yaro_rot.pdf).
 
 This implementation comes with a rotation method working for 4D and 5D tensors
@@ -41,9 +41,9 @@ A 2D rotation matrix of angle $\theta$ is defined as:
 ```math
 R(\theta) = \begin{bmatrix} \cos(\theta) & -\sin(\theta) \\ \sin(\theta) & \cos(\theta) \end{bmatrix}.
 ```
-Applying this transform matrix is done with 2D warp routines relying
-on bilinear or bicubic interpolation, for instance in OpenCV or Pytorch. 
-The authors of the paper above remarked that a threefold decomposition of 
+In practice, applying this transform matrix is done with 2D warp routines relying
+on bilinear or bicubic interpolation, for instance with OpenCV or Pytorch. 
+The authors of the paper above remarked that a three-way decomposition of 
 $R(\theta)$ exists:
 ```math
 R(\theta) =  
@@ -86,15 +86,15 @@ python setup.py install
 ## Illustration
 
 An image is worth a thousand words. Below you will find a simple experiment
-from the TIP paper consisting of rotating 16 times by $22.5^\circ$ an image
+from the TIP paper consisting in rotating 16 times by $22.5^\circ$ an image
 with bilinear and bicubic interpolation (from pytorch) and the proposed
 three-pass approach, and comparing to the original image.
 
 ![Comparison](data/comparison.png)
 
-The three-tap approach (I used the FFT-based approach) is an order of 
-magnitude of MSE more accurate than bicubic interpolation, usually featured
-to implement rotations.
+The three-pass approach (I used the FFT-based approach) is an order of 
+magnitude of MSE more accurate than bicubic interpolation, a widespread
+technique for computing sharp rotated images.
 
 
 
