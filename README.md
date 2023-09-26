@@ -75,9 +75,9 @@ each axis of the space.
 
 It can be installed from pypi with
 ```bash
-pip install pytorch_rotation
+pip install torch-rotation
 ```
-or from source with
+or (deprecated) from source with
 ```bash
 python setup.py install
 ```
