@@ -12,6 +12,7 @@ if __name__ == '__main__':
     h, w = img.shape[:2]
 
     I = torch.from_numpy(img).permute(2,0,1).unsqueeze(0)
+    # I = torch.rand(10, 3, 50, 50, 50)
 
     angle = 22.5 * math.pi / 180
 

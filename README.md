@@ -6,7 +6,7 @@ introduced in IEEE TIP'95: "Convolution-Based Interpolation for Fast,
 High-Quality Rotation of Images" by Michael Unser, Philipe Thevenaz and 
 Leonid Yaroslavsky [[paper]](https://perso.telecom-paristech.fr/angelini/SI241/papers_for_project/yaro_rot.pdf).
 
-In this implementation, you will find rotation method working for 4D and 5D tensors
+This implementation comes with a rotation method working for 4D and 5D tensors
 of shape (B,C,H,W) or (B,C,L,H,W).
 You can try the code by running
 ```bash
@@ -29,11 +29,17 @@ angle = 30 * math.pi / 180  # the angle should be in radian.
 I_rot = rotate_three_pass(I, angle)  # By default do FFT-based interpolation.
 ```
 
+Not that for the moment this package supports only the
+[basic 3D rotation](https://en.wikipedia.org/wiki/Rotation_matrix#Basic_3D_rotations)
+where the rotation $\theta$ is the same around each x,y and z-axis. In the future,
+the [general 3D rotation](https://en.wikipedia.org/wiki/Rotation_matrix#General_3D_rotations) 
+will be supported.
+
 ## What's up with this approach?
 
 A 2D rotation matrix of angle $\theta$ is defined as:
 ```math
-R(\theta) = \begin{bmatrix} \cos(\theta) & -\sin(\theta) \\ \sin(\theta) & cos(\theta) \end{bmatrix}.
+R(\theta) = \begin{bmatrix} \cos(\theta) & -\sin(\theta) \\ \sin(\theta) & \cos(\theta) \end{bmatrix}.
 ```
 Applying this transform matrix is done with 2D warp routines relying
 on bilinear or bicubic interpolation, for instance in OpenCV or Pytorch. 

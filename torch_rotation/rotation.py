@@ -6,62 +6,91 @@ import torch
 import torch.fft as fft
 import torch.nn.functional as F
 
+xyz_to_dims = {'x': (2,3,4), 'y': (3,4,2), 'z': (4,2,3)}
+
 
 def rotate_three_pass(input: torch.Tensor, 
-                      angle: Union[float, torch.Tensor] = 0.0, 
+                      angle: Union[float, int, torch.Tensor] = 0.0, 
                       N: int = -1,
                       padding_mode: str = 'constant',
-                      value: float = 0.0
+                      value: float = 0.0,
+                      order_3d: str = 'xyz',
                       ) -> torch.Tensor:
     """
     Implementation of the three tap rotation by ...
 
     Args:
         input: (B,C,H,W) or (B,C,D,H,W) the image/volume to be rotated.
-        angle: float or (B,) the angles in radians for rotation.
-        N: int, the order of interpolation. -1 is sinc interpolation.
+        angle: float or (B,) pr (B,3) the angles in radians for rotation. If (B,3) format,
+                it is an angle per 3D axis and it is sampled according to 'order_3d'.
+        N: int, the order of interpolation. -1 is sinc (FFT_based) interpolation. It is
+                recommaned to leave this setting unchanged for optimal accuracy.
         mode: str, the type of border handling.
         value: float, in the case mode == 'constant', the value to fill the holes.
+        order_3d: the order of axes around which we sequentially achieve a 2D rotation.
 
     Return:
-        input_rotated: (B,C,H,W), the rotated images.
+        input_rotated: (B,C,H,W) or (B,C,L,H,W), the rotated image/volume.
     """
     assert(input.ndim == 4 or input.ndim == 5)
     assert(N >= -1)  # Either 'infinite' or positive order.
     assert(padding_mode in ['constant', 'replicate', 'reflect', 'circular'])
+    assert(order_3d in ['xyz', 'xzy', 'yxz', 'yzx', 'zxy', 'zyx'])
 
     if input.ndim == 4:
-        ## If N = -1, we do FFT-based translations.
-        if N == -1:
-            return rotate2d_three_pass_fft(
+        return rotate2d_three_pass(input, angle, N, padding_mode, value)
+    else:
+        ## TODO: So far, we handle only the basic 3D rotation: 
+        ## https://en.wikipedia.org/wiki/Rotation_matrix#Basic_3D_rotations
+        ## In the future we plan to expand to the general 3D case:
+        ## https://en.wikipedia.org/wiki/Rotation_matrix#General_3D_rotations
+        if isinstance(angle, torch.Tensor):
+            if angle.ndim > 1:
+                raise NotImplementedError("For the moment, only handle basic 3D rotations. \
+                                          Valid angle variables or float and (B,)-sized tensors.")
+        B, C, L, H, W = input.shape
+        I = input
+        I = rotate2d_three_pass(I, angle, N, padding_mode, value)  # rotation wrt x
+        I = I.permute(0, 1, 3, 4, 2).contiguous()  # (B, C, H, W, L)
+        I = rotate2d_three_pass(I, angle, N, padding_mode, value)  # rotation wrt y
+        I = I.permute(0, 1, 3, 4, 2).contiguous()  # (B, C, W, L, H)
+        I = rotate2d_three_pass(I, angle, N, padding_mode, value)  # rotation wrt z
+        I = I.permute(0, 1, 3, 4, 2).contiguous()  # (B, C, L, H, W)    
+        return I
+
+def rotate2d_three_pass(input: torch.Tensor, 
+                        angle: Union[float, torch.Tensor] = 0.0, 
+                        N: int = -1,
+                        padding_mode: str = 'constant',
+                        value: float = 0.0,) -> torch.Tensor:
+    ## If N = -1, we do FFT-based translations.
+    if N == -1:
+        return rotate2d_three_pass_fft(
+            I=input,
+            theta=angle,
+            padding_mode=padding_mode,
+            value=value
+        )
+    ## Otherwise, do polynomial interpolation in the spatial domain.
+    else:
+        if N == 1:
+            return rotate2d_three_pass_spatial(
                 I=input,
                 theta=angle,
+                mode='bilinear',
                 padding_mode=padding_mode,
                 value=value
             )
-        ## Otherwise, do polynomial interpolation in the spatial domain.
+        elif N == 3:
+            return rotate2d_three_pass_spatial(
+                I=input,
+                theta=angle,
+                mode='bicubic',
+                padding_mode=padding_mode,
+                value=value
+            )
         else:
-            if N == 1:
-                return rotate2d_three_pass_spatial(
-                    I=input,
-                    theta=angle,
-                    mode='bilinear',
-                    padding_mode=padding_mode,
-                    value=value
-                )
-            elif N == 3:
-                return rotate2d_three_pass_spatial(
-                    I=input,
-                    theta=angle,
-                    mode='bicubic',
-                    padding_mode=padding_mode,
-                    value=value
-                )
-            else:
-                raise NotImplementedError()
-    else:
-        raise NotImplementedError()
-
+            raise NotImplementedError()
 
 
 
@@ -70,15 +99,19 @@ def rotate2d_three_pass_fft(I: torch.Tensor,
                             padding_mode: str, 
                             value: float
                             ) -> torch.Tensor:
-    B, C, H, W = I.shape
+    B = I.shape[0]
+    C = I.shape[1:-2]
+    H, W = I.shape[-2:]
     device = I.device
 
     if padding_mode != 'circular':
         pad_h = H // 2
         pad_w = W // 2
+        I = I.view(B, -1, H, W)  # for padding, we need a 4D tensor.
         I = torch.nn.functional.pad(I, [pad_w, pad_w, pad_h, pad_h], \
                                     mode=padding_mode, value=value)
         H, W = I.shape[-2:]
+        I = I.view(B, *C, H, W)  # going back to the original shape.
 
     ## Handling odd case by adding + 1 because after ifftshift,
     ## if the size of the vector is odd, we have -1 as first frequency
