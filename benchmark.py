@@ -6,13 +6,13 @@ def rotate_pytorch(image, angle=0, mode='bilinear', padding_mode='zeros'):
     amat = torch.zeros(shape[0], 2, 3, device=image.device)
     if isinstance(angle, float):
         amat[:, 0, 0] = math.cos(angle)
-        amat[:, 0, 1] = -math.sin(angle)
-        amat[:, 1, 0] = math.sin(angle)
+        amat[:, 0, 1] = -math.sin(angle) * shape[-2] / shape[-1]
+        amat[:, 1, 0] = math.sin(angle) * shape[-1] / shape[-2]
         amat[:, 1, 1] = math.cos(angle)
     else:
         amat[:, 0, 0] = torch.cos(angle)
-        amat[:, 0, 1] = -torch.sin(angle)
-        amat[:, 1, 0] = torch.sin(angle)
+        amat[:, 0, 1] = -torch.sin(angle) * shape[-2] / shape[-1]
+        amat[:, 1, 0] = torch.sin(angle) * shape[-1] / shape[-2]
         amat[:, 1, 1] = torch.cos(angle)
 
     grid = torch.nn.functional.affine_grid(

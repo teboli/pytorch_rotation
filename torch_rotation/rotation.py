@@ -58,13 +58,17 @@ def rotate_three_pass(input: torch.Tensor,
         I = I.permute(0, 1, 3, 4, 2).contiguous()  # (B, C, L, H, W)    
         return I
 
+
+
 def rotate2d_three_pass(input: torch.Tensor, 
                         angle: Union[float, torch.Tensor] = 0.0, 
                         N: int = -1,
                         padding_mode: str = 'constant',
                         value: float = 0.0,) -> torch.Tensor:
+
     ## If N = -1, we do FFT-based translations.
     if N == -1:
+        ## Do the rotations with smaller angles.
         return rotate2d_three_pass_fft(
             I=input,
             theta=angle,
@@ -93,6 +97,51 @@ def rotate2d_three_pass(input: torch.Tensor,
             raise NotImplementedError()
 
 
+def reproject_angles(angle):
+    """
+    Make sure the angles are in [-180, 180]. 
+    
+    It is necessary for the FFT-based version of the code.
+    """
+    angle = angle % (2 * math.pi)
+    if isinstance(angle, torch.Tensor):
+        m = angle > math.pi
+        angle[m] = angle[m] - 2 * math.pi
+    else:
+        if angle > math.pi:
+            angle = angle - 2 * math.pi
+    return angle
+
+
+def prerotate_larger_angles(image, theta):
+    """ 
+    Pre-rotate by +/-90 degrees for the larger angles.
+
+    It is necessary for the FFT-based version of the code.
+    """
+
+    if isinstance(theta, torch.Tensor):
+        pi = math.pi * torch.ones(1, device=image.device)
+        assert(theta.max() <= pi and theta.min() >= -pi)
+
+        angle_over_90 = theta > pi / 2
+        angle_under_minus_90 = theta < -pi / 2
+        theta[angle_over_90] = theta[angle_over_90] - pi
+        theta[angle_under_minus_90] = -pi + theta[angle_under_minus_90]
+        image[angle_over_90] = torch.rot90(image[angle_over_90], k=2, dims=(-2,-1))
+        image[angle_under_minus_90] = torch.rot90(image[angle_under_minus_90], k=-2, dims=(-2,-1))
+    else:
+        assert(theta <= math.pi and theta >= -math.pi)
+
+        if theta > math.pi / 2:
+            theta = theta - math.pi
+            image = torch.rot90(image, k=2, dims=(-2,-1))
+        elif theta < -math.pi / 2:
+            theta = -math.pi + theta
+            image = torch.rot90(image, k=-2, dims=(-2,-1))
+    
+    return image, theta
+
 
 def rotate2d_three_pass_fft(I: torch.Tensor, 
                             theta: Union[float, torch.Tensor], 
@@ -104,6 +153,18 @@ def rotate2d_three_pass_fft(I: torch.Tensor,
     H, W = I.shape[-2:]
     device = I.device
 
+    ## Because shearing can be very tricky for larger angles, we first look at the
+    ## angles that have absolute values above 90 degrees and use torch.rot90
+    ## to achieve exact rotation by +/- 90. We are left with only rotations
+    ## in [-90,90] that are safely implemented with the FFT-based shears.
+    ## Reproject the angles in [-180, 180]
+    theta = reproject_angles(theta)
+
+    ## Prerotate the larger angles.
+    I, theta = prerotate_larger_angles(I, theta)
+
+    ## Do some padding because we'll have to store the intermediate sheared 
+    ## samples out of the image domain.
     if padding_mode != 'circular':
         pad_h = H // 2
         pad_w = W // 2
@@ -112,6 +173,7 @@ def rotate2d_three_pass_fft(I: torch.Tensor,
                                     mode=padding_mode, value=value)
         H, W = I.shape[-2:]
         I = I.view(B, *C, H, W)  # going back to the original shape.
+
 
     ## Handling odd case by adding + 1 because after ifftshift,
     ## if the size of the vector is odd, we have -1 as first frequency
@@ -123,7 +185,7 @@ def rotate2d_three_pass_fft(I: torch.Tensor,
     fy = fft.ifftshift(torch.arange(-W//2+offsety, W//2+offsety, device=device))[None, :]
 
     ## Row or col-specific shift.
-    if isinstance(theta, float):
+    if isinstance(theta, float) or isinstance(theta, int):
         a = math.tan(theta/2) * torch.arange(H, device=device).add(-H//2)[:, None]
         b = -math.sin(theta) * torch.arange(W, device=device).add(-W//2)[None, :]
     else:
@@ -131,7 +193,7 @@ def rotate2d_three_pass_fft(I: torch.Tensor,
             (torch.arange(H, device=device).add(-H//2).view(1,1,H,1))
         b = -torch.sin(theta).view(B,1,1,1) * \
             (torch.arange(W, device=device).add(-W//2).view(1,1,1,W))
-    
+
     ## FFT domain shear.
     shear_fft_v = (-2j * math.pi * fx * b / H).exp()
     shear_fft_h = (-2j * math.pi * fy * a / W).exp()
@@ -170,7 +232,7 @@ def rotate2d_three_pass_spatial(I: torch.Tensor,
         I = torch.nn.functional.pad(I, [pad_w, pad_w, pad_h, pad_h], 
                                     mode=padding_mode, value=value)
         H, W = I.shape[-2:]
-    
+
     ## Spatial domain shear grids.
     shear_h = torch.zeros(B,2,3, device=device)
     shear_h[:, 0, 0] = shear_h[:, 1, 1] = 1
@@ -178,11 +240,11 @@ def rotate2d_three_pass_spatial(I: torch.Tensor,
     shear_v = shear_h.detach().clone()
 
     if isinstance(theta, float):
-        shear_h[:, 0, 1] = -math.tan(theta/2)
-        shear_v[:, 1, 0] = math.sin(theta)
+        shear_h[:, 0, 1] = -math.tan(theta/2) * H / W
+        shear_v[:, 1, 0] = math.sin(theta) * W / H
     else:
-        shear_h[:, 0, 1] = -torch.tan(theta/2)
-        shear_v[:, 1, 0] = torch.sin(theta)
+        shear_h[:, 0, 1] = -torch.tan(theta/2) * H / W
+        shear_v[:, 1, 0] = torch.sin(theta) * W / H
 
     ## TODO: fix the scaling induces by affine_grid.
     shear_h_grid = torch.nn.functional.affine_grid(shear_h, (B,C,H,W), align_corners=False)
