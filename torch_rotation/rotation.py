@@ -127,9 +127,9 @@ def rotate2d_three_pass_fft(I: torch.Tensor,
         a = math.tan(theta/2) * torch.arange(H, device=device).add(-H//2)[:, None]
         b = -math.sin(theta) * torch.arange(W, device=device).add(-W//2)[None, :]
     else:
-        a = torch.tan(theta/2, device=device).view(B,1,1,1) * \
+        a = torch.tan(theta/2).view(B,1,1,1) * \
             (torch.arange(H, device=device).add(-H//2).view(1,1,H,1))
-        b = -torch.sin(theta, device=device).view(B,1,1,1) * \
+        b = -torch.sin(theta).view(B,1,1,1) * \
             (torch.arange(W, device=device).add(-W//2).view(1,1,1,W))
     
     ## FFT domain shear.
